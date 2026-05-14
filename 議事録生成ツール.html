@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>議事録・アクションアイテム 自動生成ツール</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  --ink: #1a1a2e;
+  --ink-light: #3a3a5c;
+  --ink-muted: #8888aa;
+  --paper: #f6f5f1;
+  --paper-warm: #edeae2;
+  --accent: #c8402a;
+  --blue: #1F3864;
+  --blue-mid: #2F5496;
+  --blue-light: #dce6f5;
+  --gold: #c9a84c;
+  --success: #2d6a4f;
+  --success-light: #e8f5ee;
+  --border: #d8d3c8;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Noto Sans JP', sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+header {
+  background: var(--blue);
+  padding: 20px 40px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 3px solid var(--gold);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+}
+.header-badge {
+  background: var(--gold);
+  border-radius: 8px;
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; flex-shrink: 0;
+}
+.header-text h1 { font-size: 17px; font-weight: 700; color: #fff; letter-spacing: 0.05em; }
+.header-text p  { font-size: 11px; color: #9ab5e0; margin-top: 2px; font-weight: 300; }
+
+.container { max-width: 820px; margin: 0 auto; padding: 36px 20px 80px; }
+
+.card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 26px 30px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.04);
+}
+.card-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--ink-muted);
+  margin-bottom: 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+.card-label::before {
+  content: ''; width: 3px; height: 13px;
+  background: var(--accent); border-radius: 2px; display: inline-block;
+}
+
+.field { margin-bottom: 14px; }
+.field:last-child { margin-bottom: 0; }
+.field label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-light); margin-bottom: 6px; }
+.field-row { display: flex; gap: 8px; align-items: center; }
+.field input[type="text"],
+.field input[type="password"] {
+  width: 100%; padding: 10px 14px;
+  border: 1.5px solid var(--border); border-radius: 8px;
+  font-family: 'DM Mono', monospace; font-size: 12.5px;
+  color: var(--ink); background: var(--paper);
+  outline: none; transition: border-color 0.2s, background 0.2s;
+}
+.field input:focus { border-color: var(--blue-mid); background: #fff; }
+.field-hint { font-size: 11px; color: var(--ink-muted); margin-top: 5px; }
+
+.btn-eye {
+  padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px;
+  background: var(--paper-warm); cursor: pointer; font-size: 14px;
+  color: var(--ink-muted); white-space: nowrap; flex-shrink: 0; transition: all 0.15s;
+}
+.btn-eye:hover { background: var(--blue-light); color: var(--blue); border-color: var(--blue-mid); }
+
+.expiry-bar {
+  display: none; align-items: center; gap: 10px;
+  background: #fff8e1; border: 1px solid #f0d060;
+  border-radius: 8px; padding: 10px 14px;
+  font-size: 12px; color: #7a6010; margin-top: 14px;
+}
+.expiry-bar.visible { display: flex; }
+#timer-display {
+  font-family: 'DM Mono', monospace; font-weight: 500; font-size: 13px;
+  background: #ffeaa0; padding: 2px 8px; border-radius: 4px; margin-left: auto;
+}
+#timer-display.warn { background: #ffccaa; color: #c04010; }
+
+.dropzone {
+  border: 2px dashed var(--border); border-radius: 10px;
+  padding: 36px 20px; text-align: center; cursor: pointer;
+  transition: all 0.2s; background: var(--paper); position: relative;
+}
+.dropzone:hover, .dropzone.drag-over { border-color: var(--blue-mid); background: var(--blue-light); }
+.dropzone input[type="file"] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}
+.dz-icon { font-size: 32px; margin-bottom: 8px; }
+.dz-main { font-size: 14px; font-weight: 500; color: var(--ink); margin-bottom: 3px; }
+.dz-sub  { font-size: 12px; color: var(--ink-muted); }
+
+.file-tag {
+  display: none; align-items: center; gap: 10px;
+  padding: 10px 14px; background: #eef4ff;
+  border: 1.5px solid #b0c8f0; border-radius: 8px;
+  font-size: 13px; color: var(--blue); margin-top: 12px;
+}
+.file-tag.visible { display: flex; }
+.ft-name { font-weight: 500; flex: 1; }
+.ft-remove { cursor: pointer; color: var(--ink-muted); font-size: 18px; line-height: 1; }
+.ft-remove:hover { color: var(--accent); }
+
+.btn-generate {
+  width: 100%; padding: 15px;
+  background: var(--blue); color: #fff; border: none; border-radius: 10px;
+  font-family: 'Noto Sans JP', sans-serif; font-size: 15px; font-weight: 700;
+  letter-spacing: 0.06em; cursor: pointer; transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.btn-generate:hover:not(:disabled) {
+  background: var(--blue-mid); transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(31,56,100,0.28);
+}
+.btn-generate:disabled { background: #aaa; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.progress-wrap { display: none; margin-top: 20px; }
+.progress-wrap.visible { display: block; }
+.step-list { display: flex; flex-direction: column; gap: 8px; }
+.step-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; border-radius: 8px;
+  background: var(--paper); border: 1px solid var(--border);
+  font-size: 13px; color: var(--ink-muted); transition: all 0.3s;
+}
+.step-item.active  { background: #fff8e1; border-color: var(--gold); color: var(--ink); }
+.step-item.done    { background: var(--success-light); border-color: #90d4b0; color: var(--success); }
+.step-item.errored { background: #fff0ee; border-color: #f0a090; color: var(--accent); }
+.step-dot {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--border); display: flex; align-items: center; justify-content: center;
+  font-size: 11px; flex-shrink: 0; transition: all 0.3s;
+}
+.step-item.active  .step-dot { background: var(--gold); animation: pulse 1.2s infinite; }
+.step-item.done    .step-dot { background: var(--success); color: #fff; }
+.step-item.errored .step-dot { background: var(--accent); color: #fff; }
+@keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+
+.err-box {
+  display: none; background: #fff0ee; border: 1.5px solid #f0a090;
+  border-radius: 8px; padding: 12px 16px; color: var(--accent);
+  font-size: 13px; margin-top: 14px; line-height: 1.6;
+}
+.err-box.visible { display: block; }
+
+#results { display: none; margin-top: 4px; }
+#results.visible { display: block; }
+
+.result-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
+}
+.result-title { font-size: 16px; font-weight: 700; color: var(--blue); }
+.dl-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-dl {
+  padding: 9px 16px; border: 1.5px solid var(--blue-mid); border-radius: 8px;
+  background: #fff; color: var(--blue);
+  font-family: 'Noto Sans JP', sans-serif; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 6px;
+}
+.btn-dl:hover { background: var(--blue); color: #fff; }
+.btn-dl-all {
+  padding: 9px 18px; border: none; border-radius: 8px;
+  background: var(--blue); color: #fff;
+  font-family: 'Noto Sans JP', sans-serif; font-size: 12px; font-weight: 700;
+  cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 6px;
+}
+.btn-dl-all:hover { background: var(--blue-mid); }
+
+.tabs {
+  display: flex; gap: 2px;
+  border-bottom: 2px solid var(--border); margin-bottom: 22px;
+}
+.tab-btn {
+  padding: 10px 22px; border: none; background: none;
+  font-family: 'Noto Sans JP', sans-serif; font-size: 13px; font-weight: 500;
+  color: var(--ink-muted); cursor: pointer;
+  border-bottom: 3px solid transparent; margin-bottom: -2px;
+  border-radius: 6px 6px 0 0; transition: all 0.15s;
+}
+.tab-btn:hover { color: var(--ink); background: var(--paper); }
+.tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 700; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 22px; }
+.meta-item { background: var(--paper); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+.meta-lbl { font-size: 10px; color: var(--ink-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+.meta-val { font-size: 13px; font-weight: 500; }
+
+.min-section { margin-bottom: 18px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.min-sec-head { background: var(--blue); color: #fff; padding: 10px 16px; font-size: 13px; font-weight: 700; letter-spacing: 0.03em; }
+.min-row { display: grid; grid-template-columns: 190px 1fr; border-bottom: 1px solid var(--border); }
+.min-row:last-child { border-bottom: none; }
+.min-topic { padding: 11px 14px; background: #f5f5fa; font-size: 12.5px; font-weight: 600; border-right: 1px solid var(--border); color: var(--ink-light); }
+.min-detail { padding: 11px 14px; font-size: 13px; line-height: 1.75; color: var(--ink); white-space: pre-wrap; }
+
+.action-table-wrap { overflow-x: auto; }
+table.action-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.action-table th { background: var(--blue); color: #fff; padding: 10px 12px; text-align: left; font-weight: 600; white-space: nowrap; }
+table.action-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.6; }
+table.action-table tr:last-child td { border-bottom: none; }
+table.action-table tr:nth-child(even) td { background: #fafafa; }
+.no-col { text-align: center; color: var(--ink-muted); font-weight: 600; font-family: 'DM Mono', monospace; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.badge-status { background: #e8f5ee; color: var(--success); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-badge">📋</div>
+  <div class="header-text">
+    <h1>議事録・アクションアイテム 自動生成ツール</h1>
+    <p>Teamsトランスクリプト (.docx) → 議事録 &amp; アクションアイテム Excel 出力</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- STEP 1 -->
+  <div class="card">
+    <div class="card-label">STEP 1　API接続設定</div>
+
+    <div class="field">
+      <label>エンドポイントURL <span style="color:var(--accent)">*</span></label>
+      <input type="text" id="apiEndpoint" placeholder="https://api-qa.jll.com/csp/chat-service/api/v1/..." autocomplete="off" spellcheck="false">
+      <div class="field-hint">URLは固定です。一度入力すれば変更不要です。</div>
+    </div>
+
+    <div class="field">
+      <label>Okta アクセストークン <span style="color:var(--accent)">*</span></label>
+      <div class="field-row">
+        <input type="password" id="apiKey" placeholder="eyJraWQi..." autocomplete="off" spellcheck="false">
+        <button class="btn-eye" id="toggleKey" onclick="toggleKeyVisibility()">表示</button>
+      </div>
+      <div class="field-hint">⚠️ トークンは1時間で期限切れになります。切れたら新しいトークンを貼り付けてください。</div>
+    </div>
+
+    <div class="field">
+      <label>サブスクリプションキー <span style="color:var(--accent)">*</span></label>
+      <div class="field-row">
+        <input type="password" id="subscriptionKey" placeholder="cff946fc..." autocomplete="off" spellcheck="false">
+        <button class="btn-eye" id="toggleSubKey" onclick="toggleSubKeyVisibility()">表示</button>
+      </div>
+      <div class="field-hint">ユーザーごとに異なります。管理者から発行されたキーを入力してください。</div>
+    </div>
+
+    <div class="expiry-bar" id="expiryBar">
+      <span>⏱</span>
+      <span>トークンを貼り付けてから経過時間：</span>
+      <span id="timer-display">00:00</span>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="card">
+    <div class="card-label">STEP 2　トランスクリプトをアップロード</div>
+    <div class="dropzone" id="dropzone"
+         ondragover="handleDragOver(event)"
+         ondragleave="handleDragLeave(event)"
+         ondrop="handleDrop(event)">
+      <input type="file" id="fileInput" accept=".docx" onchange="handleFileSelect(event)">
+      <div class="dz-icon">📄</div>
+      <div class="dz-main">ここにファイルをドロップ、またはクリックして選択</div>
+      <div class="dz-sub">Teamsのトランスクリプト (.docx) のみ対応</div>
+    </div>
+    <div class="file-tag" id="fileTag">
+      <span>📎</span>
+      <span class="ft-name" id="fileName"></span>
+      <span class="ft-remove" onclick="removeFile()">✕</span>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="card">
+    <div class="card-label">STEP 3　生成実行</div>
+    <button class="btn-generate" id="generateBtn" onclick="runGeneration()" disabled>
+      <span>⚡</span><span>議事録・アクションアイテムを生成する</span>
+    </button>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="step-list">
+        <div class="step-item" id="step1"><div class="step-dot" id="dot1">1</div><span>トランスクリプトを読み込み中...</span></div>
+        <div class="step-item" id="step2"><div class="step-dot" id="dot2">2</div><span>議事録を生成中（AI）...</span></div>
+        <div class="step-item" id="step3"><div class="step-dot" id="dot3">3</div><span>アクションアイテムを抽出中（AI）...</span></div>
+        <div class="step-item" id="step4"><div class="step-dot" id="dot4">4</div><span>Excelファイルを生成中...</span></div>
+      </div>
+    </div>
+
+    <div class="err-box" id="errBox"></div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="card" id="results">
+    <div class="result-header">
+      <div class="result-title">✅ 生成完了</div>
+      <div class="dl-buttons">
+        <button class="btn-dl" onclick="downloadMinutes()">📥 議事録.xlsx</button>
+        <button class="btn-dl" onclick="downloadActions()">📥 アクションアイテム.xlsx</button>
+        <button class="btn-dl-all" onclick="downloadBoth()">📦 両方ダウンロード</button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('minutes', this)">📋 議事録</button>
+      <button class="tab-btn" onclick="switchTab('actions', this)">✅ アクションアイテム</button>
+    </div>
+
+    <div class="tab-panel active" id="tab-minutes">
+      <div class="meta-grid" id="meetingMeta"></div>
+      <div id="minutesSections"></div>
+    </div>
+
+    <div class="tab-panel" id="tab-actions">
+      <div class="action-table-wrap">
+        <table class="action-table">
+          <thead>
+            <tr>
+              <th style="width:40px">No.</th>
+              <th style="width:110px">カテゴリ</th>
+              <th>アクション内容</th>
+              <th style="width:130px">担当者</th>
+              <th style="width:120px">期限</th>
+              <th style="width:80px">ステータス</th>
+              <th style="width:160px">備考</th>
+            </tr>
+          </thead>
+          <tbody id="actionTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let selectedFile = null;
+let minutesData  = null;
+let actionsData  = null;
+let timerInterval = null;
+let timerStart    = null;
+
+// --- Timer ---
+document.getElementById('apiEndpoint').addEventListener('input', checkReady);
+document.getElementById('apiKey').addEventListener('input', function() {
+  if (this.value.trim()) startTimer(); else stopTimer();
+  checkReady();
+});
+document.getElementById('subscriptionKey').addEventListener('input', checkReady);
+
+function startTimer() {
+  stopTimer();
+  timerStart = Date.now();
+  document.getElementById('expiryBar').classList.add('visible');
+  timerInterval = setInterval(updateTimer, 1000);
+  updateTimer();
+}
+function stopTimer() {
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = null;
+  document.getElementById('expiryBar').classList.remove('visible');
+}
+function updateTimer() {
+  if (!timerStart) return;
+  const elapsed = Math.floor((Date.now() - timerStart) / 1000);
+  const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const s = String(elapsed % 60).padStart(2, '0');
+  const el = document.getElementById('timer-display');
+  el.textContent = m + ':' + s;
+  el.className = elapsed > 3000 ? 'warn' : '';
+}
+
+// --- Key visibility ---
+function toggleKeyVisibility() {
+  const inp = document.getElementById('apiKey');
+  const btn = document.getElementById('toggleKey');
+  if (inp.type === 'password') { inp.type = 'text';     btn.textContent = '隠す'; }
+  else                         { inp.type = 'password'; btn.textContent = '表示'; }
+}
+function toggleSubKeyVisibility() {
+  const inp = document.getElementById('subscriptionKey');
+  const btn = document.getElementById('toggleSubKey');
+  if (inp.type === 'password') { inp.type = 'text';     btn.textContent = '隠す'; }
+  else                         { inp.type = 'password'; btn.textContent = '表示'; }
+}
+
+// --- File handling ---
+function handleDragOver(e) { e.preventDefault(); document.getElementById('dropzone').classList.add('drag-over'); }
+function handleDragLeave()  { document.getElementById('dropzone').classList.remove('drag-over'); }
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.name.endsWith('.docx')) setFile(f);
+  else showError('docxファイルのみ対応しています。');
+}
+function handleFileSelect(e) { if (e.target.files[0]) setFile(e.target.files[0]); }
+function setFile(f) {
+  selectedFile = f;
+  document.getElementById('fileName').textContent = f.name;
+  document.getElementById('fileTag').classList.add('visible');
+  checkReady();
+}
+function removeFile() {
+  selectedFile = null;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileTag').classList.remove('visible');
+  checkReady();
+}
+
+function checkReady() {
+  const ok = selectedFile &&
+    document.getElementById('apiEndpoint').value.trim() &&
+    document.getElementById('apiKey').value.trim() &&
+    document.getElementById('subscriptionKey').value.trim();
+  document.getElementById('generateBtn').disabled = !ok;
+}
+
+// --- Step UI ---
+function setStep(n, state) {
+  const el  = document.getElementById('step' + n);
+  const dot = document.getElementById('dot' + n);
+  el.className = 'step-item ' + state;
+  if (state === 'done')    dot.textContent = '✓';
+  if (state === 'errored') dot.textContent = '✗';
+  if (state === 'active')  dot.textContent = n;
+}
+function showError(msg) {
+  const el = document.getElementById('errBox');
+  el.textContent = msg;
+  el.classList.add('visible');
+}
+
+// --- Main ---
+async function runGeneration() {
+  const endpoint = document.getElementById('apiEndpoint').value.trim();
+  const apiKey   = document.getElementById('apiKey').value.trim();
+  const subKey   = document.getElementById('subscriptionKey').value.trim();
+
+  document.getElementById('generateBtn').disabled = true;
+  document.getElementById('results').classList.remove('visible');
+  document.getElementById('errBox').classList.remove('visible');
+  document.getElementById('progressWrap').classList.add('visible');
+  [1,2,3,4].forEach(n => setStep(n, ''));
+
+  try {
+    setStep(1, 'active');
+    const transcript = await readDocx(selectedFile);
+    setStep(1, 'done');
+
+    setStep(2, 'active');
+    minutesData = await callAPI(endpoint, apiKey, subKey, buildMinutesPrompt(transcript));
+    setStep(2, 'done');
+
+    setStep(3, 'active');
+    actionsData = await callAPI(endpoint, apiKey, subKey, buildActionsPrompt(transcript));
+    setStep(3, 'done');
+
+    setStep(4, 'active');
+    renderResults(minutesData, actionsData);
+    setStep(4, 'done');
+
+    document.getElementById('results').classList.add('visible');
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch(err) {
+    [1,2,3,4].forEach(n => {
+      if (document.getElementById('step' + n).classList.contains('active')) setStep(n, 'errored');
+    });
+    showError('エラーが発生しました: ' + err.message);
+  } finally {
+    document.getElementById('generateBtn').disabled = false;
+  }
+}
+
+// --- Read DOCX ---
+function readDocx(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async e => {
+      try {
+        const res = await mammoth.extractRawText({ arrayBuffer: e.target.result });
+        resolve(res.value);
+      } catch(err) { reject(new Error('docxの読み込みに失敗しました: ' + err.message)); }
+    };
+    reader.onerror = () => reject(new Error('ファイルの読み込みに失敗しました'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// --- API Call ---
+async function callAPI(endpoint, oktaToken, subKey, prompt) {
+  let res;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + oktaToken,
+        'Ocp-Apim-Subscription-Key': subKey,
+      },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 8000,
+      })
+    });
+  } catch(e) {
+    throw new Error('ネットワークエラー: サーバーに接続できませんでした。URLとネットワーク接続をご確認ください。');
+  }
+
+  if (!res.ok) {
+    let errText = '';
+    try { errText = await res.text(); } catch(_) {}
+    if (res.status === 401) throw new Error('認証エラー (401): Oktaトークンをご確認ください。有効期限が切れている可能性があります。');
+    if (res.status === 403) throw new Error('アクセス拒否 (403): サブスクリプションキーまたはURLをご確認ください。');
+    if (res.status === 404) throw new Error('エンドポイントが見つかりません (404): URLをご確認ください。');
+    throw new Error('APIエラー (' + res.status + '): ' + errText.slice(0, 300));
+  }
+
+  const data = await res.json();
+  // Anthropic形式: data.content[0].text
+  // OpenAI互換形式: data.choices[0].message.content
+  let text = '';
+  if (data.content && data.content[0] && data.content[0].text) {
+    text = data.content[0].text;
+  } else if (data.choices && data.choices[0] && data.choices[0].message) {
+    text = data.choices[0].message.content;
+  } else if (typeof data.message === 'string') {
+    text = data.message;
+  } else {
+    throw new Error('APIレスポンスの形式が想定外です。レスポンス: ' + JSON.stringify(data).slice(0, 300));
+  }
+  return parseJSON(text);
+}
+
+function parseJSON(text) {
+  let t = text.trim();
+  if (t.startsWith('```')) {
+    const lines = t.split('\n');
+    const end = lines[lines.length - 1].startsWith('```') ? lines.length - 1 : lines.length;
+    t = lines.slice(1, end).join('\n');
+  }
+  try { return JSON.parse(t); }
+  catch(e) { throw new Error('AIからの応答をJSONとして解釈できませんでした。応答の先頭: ' + t.slice(0, 200)); }
+}
+
+// --- Prompts ---
+function buildMinutesPrompt(transcript) {
+  return `あなたは建設プロジェクトの議事録を作成するプロフェッショナルなアシスタントです。
+以下の会議トランススクリプトを読み、指定された目次に沿って正確かつ網羅的な議事録を作成してください。
+
+【目次（必ずこの順序・タイトルで作成）】
+1. JLLよりスケジュールの共有
+2. NAPより設計進捗状況・変更箇所の共有
+3. JLLより内装概算の共有
+4. その他
+5. 次回定例日時
+
+【出力形式】
+以下の構造の有効なJSONのみ出力してください。マークダウン記号(\`\`\`)や前後の説明文は一切不要です。
+
+{
+  "meeting_info": {
+    "title": "会議名",
+    "date": "会議日",
+    "duration": "所要時間",
+    "attendees": ["氏名(所属)", "..."]
+  },
+  "sections": [
+    {
+      "section_number": "1",
+      "title": "JLLよりスケジュールの共有",
+      "items": [
+        {"topic": "議題の小見出し", "details": "具体的な内容(複数文可)"}
+      ]
+    }
+  ]
+}
+
+【作成ルール】
+- 各セクションには複数のitemを含め、内容を漏れなく整理する
+- details は元の発言内容を踏まえて、ですます調または体言止めで明確に記述
+- 数値・日付・固有名詞は正確に抽出
+- 各 section の title は上記目次と完全一致させること
+- 「次回定例日時」セクションは items を1件として、topic="日時", details="..." の形式にする
+
+【トランススクリプト】
+${transcript}`;
+}
+
+function buildActionsPrompt(transcript) {
+  return `あなたは建設プロジェクトのアクションアイテム抽出を専門とするアシスタントです。
+以下の会議トランススクリプトから、明示的・暗黙的に発生したタスク(Action Items)をすべて抽出してください。
+
+【出力形式】
+以下の構造の有効なJSONのみ出力してください。マークダウン記号(\`\`\`)や前後の説明文は一切不要です。
+
+{
+  "action_items": [
+    {
+      "no": 1,
+      "category": "スケジュール / 設計 / コスト / 防火・避難 / 申請・協議 / その他",
+      "action": "何を行うか(簡潔に)",
+      "owner": "担当者名(所属つき)",
+      "deadline": "期限(明示されていれば日付、なければ「次回定例まで」「未定」など)",
+      "status": "未着手",
+      "notes": "備考(背景・依存関係など)"
+    }
+  ]
+}
+
+【抽出ルール】
+- 「〜してください」「〜お願いします」「〜検討します」「〜確認します」などのタスクをすべて拾う
+- 暗黙のタスクも含める
+- 担当者は発言者または明示された担当者
+- 重複は統合し、no は1から連番
+
+【トランススクリプト】
+${transcript}`;
+}
+
+// --- Render ---
+function renderResults(minutes, actions) {
+  const info = minutes.meeting_info || {};
+  const metaEl = document.getElementById('meetingMeta');
+  metaEl.innerHTML = [
+    ['会議名', info.title],
+    ['日時', info.date],
+    ['所要時間', info.duration],
+    ['参加者', Array.isArray(info.attendees) ? info.attendees.join('、') : info.attendees],
+  ].map(function(item) {
+    return '<div class="meta-item"><div class="meta-lbl">' + item[0] + '</div><div class="meta-val">' + esc(item[1] || '—') + '</div></div>';
+  }).join('');
+
+  const secEl = document.getElementById('minutesSections');
+  secEl.innerHTML = (minutes.sections || []).map(function(sec) {
+    return '<div class="min-section">'
+      + '<div class="min-sec-head">' + esc(sec.section_number) + '. ' + esc(sec.title) + '</div>'
+      + (sec.items || []).map(function(item) {
+          return '<div class="min-row"><div class="min-topic">' + esc(item.topic) + '</div><div class="min-detail">' + esc(item.details) + '</div></div>';
+        }).join('')
+      + '</div>';
+  }).join('');
+
+  const tbody = document.getElementById('actionTableBody');
+  tbody.innerHTML = (actions.action_items || []).map(function(item) {
+    return '<tr>'
+      + '<td class="no-col">' + item.no + '</td>'
+      + '<td>' + esc(item.category) + '</td>'
+      + '<td>' + esc(item.action) + '</td>'
+      + '<td>' + esc(item.owner) + '</td>'
+      + '<td>' + esc(item.deadline) + '</td>'
+      + '<td><span class="badge badge-status">' + esc(item.status || '未着手') + '</span></td>'
+      + '<td style="color:var(--ink-muted)">' + esc(item.notes || '') + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+function switchTab(id, btn) {
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+  btn.classList.add('active');
+  document.getElementById('tab-' + id).classList.add('active');
+}
+
+// --- Excel export ---
+function buildMinutesWb(minutes) {
+  const wb = XLSX.utils.book_new();
+  const aoa = [['議事録'], []];
+  const info = minutes.meeting_info || {};
+  [['会議名', info.title || ''], ['日時', info.date || ''], ['所要時間', info.duration || ''],
+   ['参加者', Array.isArray(info.attendees) ? info.attendees.join('、') : (info.attendees || '')]
+  ].forEach(function(r) { aoa.push(r); });
+  aoa.push([]);
+  (minutes.sections || []).forEach(function(sec) {
+    aoa.push([sec.section_number + '. ' + sec.title]);
+    (sec.items || []).forEach(function(item) { aoa.push([item.topic, item.details]); });
+    aoa.push([]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 32 }, { wch: 90 }];
+  XLSX.utils.book_append_sheet(wb, ws, '議事録');
+  return wb;
+}
+
+function buildActionsWb(actions) {
+  const wb = XLSX.utils.book_new();
+  const headers = ['No.','カテゴリ','アクション内容','担当者','期限','ステータス','備考'];
+  const aoa = [['アクションアイテムリスト'], [], headers];
+  (actions.action_items || []).forEach(function(item) {
+    aoa.push([item.no, item.category, item.action, item.owner, item.deadline, item.status || '未着手', item.notes || '']);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [6,14,50,24,20,12,45].map(function(w) { return { wch: w }; });
+  XLSX.utils.book_append_sheet(wb, ws, 'アクションアイテム');
+  return wb;
+}
+
+function downloadMinutes() { if (minutesData) XLSX.writeFile(buildMinutesWb(minutesData), '議事録.xlsx'); }
+function downloadActions()  { if (actionsData)  XLSX.writeFile(buildActionsWb(actionsData),  'アクションアイテム.xlsx'); }
+function downloadBoth()     { downloadMinutes(); setTimeout(downloadActions, 300); }
+</script>
+</body>
+</html>
