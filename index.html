@@ -259,8 +259,8 @@ table.action-table tr:nth-child(even) td { background: #fafafa; }
 
     <div class="field">
       <label>エンドポイントURL <span style="color:var(--accent)">*</span></label>
-      <input type="text" id="apiEndpoint" placeholder="https://api-qa.jll.com/csp/chat-service/api/v1/..." autocomplete="off" spellcheck="false">
-      <div class="field-hint">URLは固定です。一度入力すれば変更不要です。</div>
+      <input type="text" id="apiEndpoint" placeholder="https://api-qa.jll.com/csp/chat-service/api/v1" autocomplete="off" spellcheck="false">
+      <div class="field-hint">ベースURLを入力してください（末尾に <code>/chat/completions</code> は不要）。URLは固定です。</div>
     </div>
 
     <div class="field">
@@ -525,16 +525,21 @@ function readDocx(file) {
 
 // --- API Call ---
 async function callAPI(endpoint, oktaToken, subKey, prompt) {
+  // エンドポイントURLのベースから /chat/completions を組み立てる
+  const base = endpoint.replace(/\/+$/, '');
+  const url  = base.endsWith('/chat/completions') ? base : base + '/chat/completions';
+
   let res;
   try {
-    res = await fetch(endpoint, {
+    res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + oktaToken,
-        'Ocp-Apim-Subscription-Key': subKey,
+        'Subscription-Key': subKey,
       },
       body: JSON.stringify({
+        model: 'GPT_35_TURBO',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 8000,
       })
@@ -547,24 +552,14 @@ async function callAPI(endpoint, oktaToken, subKey, prompt) {
     let errText = '';
     try { errText = await res.text(); } catch(_) {}
     if (res.status === 401) throw new Error('認証エラー (401): Oktaトークンをご確認ください。有効期限が切れている可能性があります。');
-    if (res.status === 403) throw new Error('アクセス拒否 (403): サブスクリプションキーまたはURLをご確認ください。');
+    if (res.status === 403) throw new Error('アクセス拒否 (403): サブスクリプションキーをご確認ください。');
     if (res.status === 404) throw new Error('エンドポイントが見つかりません (404): URLをご確認ください。');
     throw new Error('APIエラー (' + res.status + '): ' + errText.slice(0, 300));
   }
 
   const data = await res.json();
-  // Anthropic形式: data.content[0].text
-  // OpenAI互換形式: data.choices[0].message.content
-  let text = '';
-  if (data.content && data.content[0] && data.content[0].text) {
-    text = data.content[0].text;
-  } else if (data.choices && data.choices[0] && data.choices[0].message) {
-    text = data.choices[0].message.content;
-  } else if (typeof data.message === 'string') {
-    text = data.message;
-  } else {
-    throw new Error('APIレスポンスの形式が想定外です。レスポンス: ' + JSON.stringify(data).slice(0, 300));
-  }
+  const text = data?.choices?.[0]?.message?.content || '';
+  if (!text) throw new Error('APIからの応答が空です。レスポンス: ' + JSON.stringify(data).slice(0, 300));
   return parseJSON(text);
 }
 
